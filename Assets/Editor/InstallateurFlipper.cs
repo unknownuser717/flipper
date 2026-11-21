@@ -71,7 +71,9 @@ public static class InstallateurFlipper
         Vector3 ancienneBille = bille.transform.position;
         if (surPlateau)
         {
-            Vector3 posee = sol.point + normale * (rayon + 0.005f);
+            // On ne déplace la bille que perpendiculairement à la table (sinon elle dérive à chaque installation)
+            float hauteurActuelle = Vector3.Dot(ancienneBille - sol.point, normale);
+            Vector3 posee = ancienneBille - normale * (hauteurActuelle - (rayon + 0.005f));
             if (Vector3.Distance(posee, ancienneBille) > 0.01f)
             {
                 Undo.RecordObject(bille.transform, "Poser la bille");
@@ -114,6 +116,7 @@ public static class InstallateurFlipper
         if (ressort != null)
         {
             PlacerRessort(ressort, depart.transform.position, rayon, normale, hautTable, rapport);
+            DegagerBilleDuRessort(bille, depart, ressort, rayon, hautTable, rapport);
 
             Rigidbody rbRessort = ObtenirOuAjouter<Rigidbody>(ressort);
             rbRessort.isKinematic = true;
@@ -239,6 +242,11 @@ public static class InstallateurFlipper
 
         // ---------------------------------------------------------------- 12. Pastilles de bonus au sol
         CreerGroupesBonus(depart.transform.position - normale * rayon, normale, hautTable, rapport, aVerifier);
+        HabillerTousLesInserts(rapport);
+        ConfigurerLueurs(rapport);
+
+        // ---------------------------------------------------------------- 12 bis. Porte à sens unique en haut du couloir du lanceur
+        ConstruirePorteLanceur(depart.transform.position, rayon, normale, hautTable, rapport, aVerifier);
 
         // ---------------------------------------------------------------- 13. Textures des murs
         AppliquerTexturesMurs(rapport, aVerifier);
@@ -525,6 +533,33 @@ public static class InstallateurFlipper
 
     // ==================================================================== RESSORT
 
+    // Si la bille (ou son point de départ) chevauche le ressort, on la replace juste devant le bout du ressort.
+    static void DegagerBilleDuRessort(GameObject bille, GameObject depart, GameObject ressort, float rayon, Vector3 hautTable, StringBuilder rapport)
+    {
+        Physics.SyncTransforms();
+        Collider colRessort = ressort.GetComponent<Collider>();
+        if (colRessort == null) return;
+
+        // Bout du ressort côté bille : point le plus "haut de la table" de son collider
+        Bounds b = colRessort.bounds;
+        float boutRessort = float.MinValue;
+        for (int i = 0; i < 8; i++)
+        {
+            Vector3 coin = new Vector3((i & 1) == 0 ? b.min.x : b.max.x, (i & 2) == 0 ? b.min.y : b.max.y, (i & 4) == 0 ? b.min.z : b.max.z);
+            Vector3 p = colRessort.ClosestPoint(coin + hautTable * 10f);   // point du ressort le plus loin vers le haut
+            boutRessort = Mathf.Max(boutRessort, Vector3.Dot(p, hautTable));
+        }
+
+        foreach (GameObject go in new[] { bille, depart })
+        {
+            float ecart = Vector3.Dot(go.transform.position, hautTable) - boutRessort;
+            if (ecart >= rayon) continue;
+            Undo.RecordObject(go.transform, "Dégager la bille");
+            go.transform.position += hautTable * (rayon + 0.02f - ecart);
+            rapport.AppendLine($"- {go.name} était dans le ressort : replacé juste devant.");
+        }
+    }
+
     // Couche le ressort dans le couloir, juste derrière la bille, s'il en est loin.
     static void PlacerRessort(GameObject ressort, Vector3 positionBille, float rayon, Vector3 normale, Vector3 hautTable, StringBuilder rapport)
     {
@@ -550,14 +585,21 @@ public static class InstallateurFlipper
     const string NomGuideHaut = "Guide_Haut_Droite";
     const string NomMurFond = "Mur_Fond";
     const float RayonGuide = 2.5f;
-    const int SegmentsGuide = 8;
+    const int SegmentsGuide = 16;
+    const string MarqueGuideV2 = "Segment_16";   // présent = arc déjà à la bonne version (16 segments sans frottement)
 
     // En haut de la table :
     //  - Mur_Fond : mur invisible au bout de la surface de jeu (bouche le trou entre le plateau et le mur du fond),
     //  - Guide_Haut_Droite : arc de cercle en haut du couloir du lanceur, qui renvoie la bille vers le plateau.
+    // Arc et mur sont sans frottement (matériau Rail) : la bille garde son élan et part vers la gauche,
+    // au lieu de perdre sa vitesse dans le coin et de retomber.
     // Les segments de l'arc sont des cubes : vous pouvez les remplacer par votre propre modèle.
     static void ConstruireGuideHaut(GameObject bille, float rayon, Vector3 normale, Vector3 hautTable, StringBuilder rapport, StringBuilder aVerifier)
     {
+        // Ancien arc (8 segments avec frottement) : on le supprime AVANT de mesurer le couloir
+        GameObject ancienGuide = TrouverParNom(NomGuideHaut);
+        if (ancienGuide != null && ancienGuide.transform.Find(MarqueGuideV2) == null)
+            Undo.DestroyObjectImmediate(ancienGuide);
         Physics.SyncTransforms();
         Vector3 depart = bille.transform.position;
         Vector3 droite = Vector3.Cross(normale, hautTable);
@@ -579,9 +621,19 @@ public static class InstallateurFlipper
         }
         float distDroite = Vector3.Dot(murDroit.point - depart, droite);
 
-        PhysicsMaterial mat = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>($"{DossierPhysique}/Plateau.physicMaterial");
+        PhysicsMaterial mat = MateriauRail();   // sans frottement
 
-        if (TrouverParNom(NomMurFond) == null)
+        GameObject murExistant = TrouverParNom(NomMurFond);
+        if (murExistant != null)
+        {
+            var col = murExistant.GetComponent<Collider>();
+            if (col != null && col.sharedMaterial != mat)
+            {
+                Undo.RecordObject(col, "Mur_Fond");
+                col.sharedMaterial = mat;
+            }
+        }
+        else
         {
             var mur = new GameObject(NomMurFond);
             Undo.RegisterCreatedObjectUndo(mur, NomMurFond);
@@ -868,14 +920,13 @@ public static class InstallateurFlipper
         if (murFond != null)
             vHaut = Vector3.Dot(murFond.transform.position - centre, hautTable) - 0.25f;
 
-        Material mat = MateriauPastille();
-        CreerGroupe("Bonus_Haut", 5000, centre, droite, normale, hautTable, vHaut - 1.6f, vHaut - 5f, mat, rapport, aVerifier);
-        CreerGroupe("Bonus_Centre", 3000, centre, droite, normale, hautTable, 1f, -4f, mat, rapport, aVerifier);
+        CreerGroupe("Bonus_Haut", 5000, centre, droite, normale, hautTable, vHaut - 1.6f, vHaut - 5f, rapport, aVerifier);
+        CreerGroupe("Bonus_Centre", 3000, centre, droite, normale, hautTable, 1f, -4f, rapport, aVerifier);
     }
 
     // Cherche une rangée de 3 emplacements libres entre vDebut et vFin (en descendant), puis crée le groupe.
     static void CreerGroupe(string nom, int bonus, Vector3 centre, Vector3 droite, Vector3 normale, Vector3 hautTable,
-                            float vDebut, float vFin, Material mat, StringBuilder rapport, StringBuilder aVerifier)
+                            float vDebut, float vFin, StringBuilder rapport, StringBuilder aVerifier)
     {
         if (TrouverParNom(nom) != null) return;
 
@@ -899,7 +950,7 @@ public static class InstallateurFlipper
                 g.bonusComplet = bonus;
 
                 for (int i = 0; i < points.Length; i++)
-                    CreerPastille($"Pastille_{i + 1}", groupe.transform, points[i], mat);
+                    CreerPastille($"Pastille_{i + 1}", groupe.transform, points[i]);
 
                 rapport.AppendLine($"- {nom} : 3 pastilles de bonus (250 pts chacune, {bonus} quand les 3 sont allumées).");
                 return;
@@ -908,28 +959,222 @@ public static class InstallateurFlipper
         aVerifier.AppendLine($"- {nom} : pas de place libre trouvée sur le plateau, groupe non créé.");
     }
 
-    static void CreerPastille(string nom, Transform parent, Vector3 position, Material mat)
+    static void CreerPastille(string nom, Transform parent, Vector3 position)
     {
         var cible = new GameObject(nom);
         Undo.RegisterCreatedObjectUndo(cible, nom);
         cible.transform.SetParent(parent, false);
         cible.transform.SetPositionAndRotation(position, parent.rotation);
 
-        // Zone de détection (trigger) au-dessus de la pastille
         var zone = cible.AddComponent<BoxCollider>();
         zone.isTrigger = true;
-        zone.center = new Vector3(0f, 0.35f, 0f);
-        zone.size = new Vector3(0.7f, 0.7f, 0.7f);
-        cible.AddComponent<CibleBonus>();
+        HabillerInsert(cible.AddComponent<CibleBonus>());
+    }
 
-        // Disque visible, posé à plat sur le plateau (sans collider : la bille roule dessus)
-        GameObject disque = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        Object.DestroyImmediate(disque.GetComponent<Collider>());
-        disque.name = "Disque";
-        disque.transform.SetParent(cible.transform, false);
-        disque.transform.localPosition = new Vector3(0f, 0.012f, 0f);
-        disque.transform.localScale = new Vector3(0.55f, 0.004f, 0.55f);
-        if (mat != null) disque.GetComponent<Renderer>().sharedMaterial = mat;
+    // ==================================================================== INSERTS (style lentilles de flipper)
+
+    // Groupe du centre : flèches violettes (pointe rouge) ; autres groupes : ronds jaunes "BONUS".
+    static bool EstFleche(CibleBonus cible)
+    {
+        Transform groupe = cible.transform.parent;
+        return groupe != null && groupe.name == "Bonus_Centre";
+    }
+
+    static void HabillerTousLesInserts(StringBuilder rapport)
+    {
+        int nb = 0;
+        foreach (GameObject go in TousLesObjets())
+        {
+            if (go == null) continue;
+            CibleBonus cible = go.GetComponent<CibleBonus>();
+            if (cible == null) continue;
+            if (HabillerInsert(cible)) nb++;
+            if (cible.intensiteAllumee > 2f)   // ancienne valeur : l'insert allumé virait au blanc avec le bloom
+            {
+                Undo.RecordObject(cible, "Insert");
+                cible.intensiteAllumee = 1.4f;
+            }
+        }
+        if (nb > 0) rapport.AppendLine($"- {nb} insert(s) de bonus au style flipper (lentille + lumière).");
+    }
+
+    // Remplace l'ancien disque par une lentille plate découpée (flèche ou rond) + une lumière.
+    // Renvoie vrai si quelque chose a changé.
+    static bool HabillerInsert(CibleBonus cible)
+    {
+        Transform t = cible.transform;
+        if (t.Find("Insert") != null && t.Find("Lumiere") != null) return false;
+
+        Transform ancien = t.Find("Disque");
+        if (ancien != null)
+        {
+            // Si l'ancien disque a été déplacé à la main, la pastille entière (détection + insert) va à cet endroit
+            if (ancien.localPosition.sqrMagnitude > 0.05f * 0.05f)
+            {
+                Undo.RecordObject(t, "Insert");
+                t.position = ancien.position - t.up * Vector3.Dot(ancien.position - t.position, t.up);
+            }
+            Undo.DestroyObjectImmediate(ancien.gameObject);
+        }
+
+        bool fleche = EstFleche(cible);
+        Color couleur = fleche ? new Color(0.75f, 0.45f, 1f) : new Color(1f, 0.8f, 0.25f);
+
+        Undo.RecordObject(cible, "Insert");
+        cible.couleurAllumee = couleur;
+
+        // Zone de détection adaptée à la forme
+        var zone = cible.GetComponent<BoxCollider>();
+        if (zone != null)
+        {
+            Undo.RecordObject(zone, "Insert");
+            zone.center = new Vector3(0f, 0.35f, 0f);
+            zone.size = fleche ? new Vector3(0.6f, 0.7f, 1.0f) : new Vector3(0.7f, 0.7f, 0.7f);
+        }
+
+        // Lentille : quad posé à plat (sans collider : la bille roule dessus), pointe vers le haut de la table
+        if (t.Find("Insert") == null)
+        {
+            GameObject lentille = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            Object.DestroyImmediate(lentille.GetComponent<Collider>());
+            lentille.name = "Insert";
+            Undo.RegisterCreatedObjectUndo(lentille, "Insert");
+            lentille.transform.SetParent(t, false);
+            lentille.transform.localPosition = new Vector3(0f, 0.012f, 0f);
+            lentille.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            lentille.transform.localScale = fleche ? new Vector3(0.5f, 1.0f, 1f) : new Vector3(0.62f, 0.62f, 1f);
+            var r = lentille.GetComponent<MeshRenderer>();
+            r.sharedMaterial = MateriauInsert(fleche ? "Insert_Fleche" : "Insert_Rond");
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+
+        // Lumière juste au-dessus de l'insert : éclaire le plateau autour quand il est allumé
+        if (t.Find("Lumiere") == null)
+        {
+            var go = new GameObject("Lumiere");
+            Undo.RegisterCreatedObjectUndo(go, "Lumiere");
+            go.transform.SetParent(t, false);
+            go.transform.localPosition = new Vector3(0f, 0.25f, 0f);
+            var l = go.AddComponent<Light>();
+            l.type = LightType.Point;
+            l.range = 1.4f;
+            l.intensity = 0f;
+            l.color = couleur;
+            l.shadows = LightShadows.None;
+        }
+        EditorUtility.SetDirty(cible);
+        return true;
+    }
+
+    // Matériau URP Lit découpé (alpha) et lumineux, à partir des textures Insert_*.png
+    static Material MateriauInsert(string nom)
+    {
+        string cheminTex = $"{DossierTextures}/{nom}.png";
+        if (AssetImporter.GetAtPath(cheminTex) is TextureImporter imp &&
+            (!imp.alphaIsTransparency || imp.wrapMode != TextureWrapMode.Clamp))
+        {
+            imp.alphaIsTransparency = true;
+            imp.wrapMode = TextureWrapMode.Clamp;
+            imp.SaveAndReimport();
+        }
+        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(cheminTex);
+        Material mat = MateriauLit($"{DossierMateriaux}/{nom}.mat", tex, null, tex, Color.white, 0f, 0.85f, Vector2.one, Color.white);
+        mat.SetFloat("_AlphaClip", 1f);
+        mat.SetFloat("_Cutoff", 0.5f);
+        mat.EnableKeyword("_ALPHATEST_ON");
+        mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+        EditorUtility.SetDirty(mat);
+        return mat;
+    }
+
+    // Lueurs (bloom) : les inserts allumés et les braises des murs brillent, comme sur un vrai flipper.
+    static void ConfigurerLueurs(StringBuilder rapport)
+    {
+        if (Object.FindAnyObjectByType<UnityEngine.Rendering.Volume>() == null)
+        {
+            var profil = AssetDatabase.LoadAssetAtPath<UnityEngine.Rendering.VolumeProfile>("Assets/Settings/SampleSceneProfile.asset");
+            if (profil != null)
+            {
+                var go = new GameObject("Volume_Lueurs");
+                Undo.RegisterCreatedObjectUndo(go, "Volume_Lueurs");
+                var volume = go.AddComponent<UnityEngine.Rendering.Volume>();
+                volume.isGlobal = true;
+                volume.sharedProfile = profil;
+                rapport.AppendLine("- Volume_Lueurs créé (bloom : les inserts et les braises brillent).");
+            }
+        }
+        foreach (Camera cam in Object.FindObjectsByType<Camera>())
+        {
+            var donnees = cam.GetComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+            if (donnees == null || donnees.renderPostProcessing) continue;
+            Undo.RecordObject(donnees, "Post-traitement");
+            donnees.renderPostProcessing = true;
+            rapport.AppendLine($"- Caméra {cam.name} : post-traitement activé (nécessaire pour le bloom).");
+        }
+    }
+
+    // ==================================================================== PORTE DU LANCEUR
+
+    const float AnglePorte = 25f;
+
+    // Porte à sens unique en haut du couloir du lanceur : la bille passe en montant (OneWayGate),
+    // mais en redescendant elle glisse le long de la porte (inclinée) et retombe sur le plateau.
+    static void ConstruirePorteLanceur(Vector3 centreBille, float rayon, Vector3 normale, Vector3 hautTable, StringBuilder rapport, StringBuilder aVerifier)
+    {
+        const string nom = "Porte_Lanceur";
+        if (TrouverParNom(nom) != null) return;
+        Physics.SyncTransforms();
+        Vector3 droite = Vector3.Cross(normale, hautTable);
+
+        // Haut du mur gauche du couloir : on remonte le couloir tant qu'il y a un mur à gauche
+        float vFin = -1f;
+        for (float d = 0f; d < 40f; d += 0.05f)
+        {
+            if (!RaycastHorsBille(centreBille + hautTable * d, -droite, 0.8f, out RaycastHit _)) { vFin = d; break; }
+        }
+        Vector3 repere = centreBille + hautTable * (vFin - 0.4f);
+        if (vFin < 1f ||
+            !RaycastHorsBille(repere, -droite, 1.5f, out RaycastHit murG) ||
+            !RaycastHorsBille(repere, droite, 1.5f, out RaycastHit murD))
+        {
+            aVerifier.AppendLine("- Couloir du lanceur : bout du mur gauche introuvable, porte non créée.");
+            return;
+        }
+
+        float uG = Vector3.Dot(murG.point - centreBille, droite), uD = Vector3.Dot(murD.point - centreBille, droite);
+        Vector3 surface = centreBille - normale * rayon;
+        // Bout gauche collé au bout du mur gauche, bout droit plus haut : la bille qui redescend glisse vers le plateau
+        Vector3 pG = surface + droite * uG + hautTable * (vFin - 0.05f);
+        Vector3 pD = surface + droite * uD + hautTable * (vFin - 0.05f + (uD - uG) * Mathf.Tan(AnglePorte * Mathf.Deg2Rad));
+        Vector3 direction = (pD - pG).normalized;
+        float longueur = (pD - pG).magnitude;
+
+        var porte = new GameObject(nom);
+        Undo.RegisterCreatedObjectUndo(porte, nom);
+        porte.transform.SetPositionAndRotation((pG + pD) * 0.5f + normale * 0.45f, Quaternion.LookRotation(Vector3.Cross(direction, normale), normale));
+
+        var solide = porte.AddComponent<BoxCollider>();
+        solide.size = new Vector3(longueur + 0.1f, 0.9f, 0.06f);
+        solide.sharedMaterial = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>($"{DossierPhysique}/Plateau.physicMaterial");
+        var zone = porte.AddComponent<BoxCollider>();
+        zone.isTrigger = true;
+        zone.size = new Vector3(longueur, 0.9f, 1.4f);
+
+        var sens = porte.AddComponent<OneWayGate>();
+        sens.solidCollider = solide;
+        sens.allowedDirection = Vector3.forward;   // vers le haut du couloir
+
+        // Petite lame métallique visible
+        GameObject lame = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        Object.DestroyImmediate(lame.GetComponent<Collider>());
+        lame.name = "Lame";
+        lame.transform.SetParent(porte.transform, false);
+        lame.transform.localPosition = new Vector3(0f, -0.15f, 0f);
+        lame.transform.localScale = new Vector3(longueur, 0.6f, 0.03f);
+        Material metal = AssetDatabase.LoadAssetAtPath<Material>($"{DossierMateriaux}/Metal_Brosse.mat");
+        if (metal != null) lame.GetComponent<Renderer>().sharedMaterial = metal;
+
+        rapport.AppendLine("- Porte_Lanceur : la bille sort du couloir du lanceur mais ne peut plus y retomber.");
     }
 
     // Libre = rien (hors plateau, vitre et triggers) dans le volume où passe la bille.
@@ -943,13 +1188,6 @@ public static class InstallateurFlipper
         // Il faut aussi du plateau sous la pastille
         return Physics.Raycast(p + normale * 0.3f, -normale, out RaycastHit sol, 0.6f, ~0, QueryTriggerInteraction.Ignore)
             && sol.collider.name == "Playfield";
-    }
-
-    static Material MateriauPastille()
-    {
-        var tex = AssetDatabase.LoadAssetAtPath<Texture2D>($"{DossierTextures}/Bonus_Pastille.png");
-        return MateriauLit($"{DossierMateriaux}/Bonus_Pastille.mat", tex, null, tex,
-            new Color(1f, 0.55f, 0.1f), 0f, 0.8f, Vector2.one, Color.white);
     }
 
     // ==================================================================== TEXTURES DES MURS

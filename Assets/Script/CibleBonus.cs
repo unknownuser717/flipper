@@ -1,8 +1,10 @@
 using UnityEngine;
 
-// Pastille de bonus au sol (rollover) : la bille passe dessus -> points + la pastille s'allume.
-// Si elle fait partie d'un GroupeBonus (objet parent), le groupe donne un gros bonus quand toutes sont allumées.
-// Il faut un collider "Is Trigger" sur cet objet, et la pastille visible (Renderer) en enfant.
+// Insert de bonus au sol (rollover) : la bille passe dessus -> points + l'insert s'allume.
+// Éteint, il clignote doucement (en chenillard avec ses voisins) pour montrer qu'il reste à prendre.
+// Allumé, une petite lumière sous l'insert éclaire le plateau autour.
+// Si l'insert fait partie d'un GroupeBonus (objet parent), le groupe donne un gros bonus quand tous sont allumés.
+// Il faut un collider "Is Trigger" sur cet objet, l'insert visible (Renderer) et la lumière (Light) en enfants.
 [RequireComponent(typeof(Collider))]
 public class CibleBonus : MonoBehaviour
 {
@@ -12,17 +14,29 @@ public class CibleBonus : MonoBehaviour
     public float delaiMinimum = 0.3f;
 
     [Header("Couleurs")]
-    public Color couleurEteinte = new Color(0.25f, 0.08f, 0.03f);
-    public Color couleurAllumee = new Color(1f, 0.55f, 0.1f);
-    [Tooltip("Intensité de la lumière émise quand la pastille est allumée.")]
-    public float intensiteAllumee = 3f;
+    public Color couleurAllumee = new Color(0.75f, 0.45f, 1f);
+    [Tooltip("Luminosité de l'insert éteint (fraction de la couleur allumée).")]
+    [Range(0f, 1f)] public float luminositeEteinte = 0.35f;
+    [Tooltip("Intensité de la lueur de l'insert allumé.")]
+    public float intensiteAllumee = 1.4f;
+
+    [Header("Lumière sous l'insert")]
+    public float intensiteLumiere = 1.5f;
+
+    [Header("Clignotement quand éteint")]
+    public bool clignoterEteinte = true;
+    [Tooltip("Clignotements par seconde.")]
+    public float vitesseClignotement = 1.2f;
 
     public bool Allumee { get; private set; }
 
     private Renderer rendu;
+    private Light lumiere;
     private MaterialPropertyBlock bloc;
     private GroupeBonus groupe;
     private float dernierPassage = -10f;
+    private float phase;
+    private float forceJusqua = -1f;   // pendant le clignotement du groupe, on ne touche à rien
 
     void Reset()
     {
@@ -33,9 +47,19 @@ public class CibleBonus : MonoBehaviour
     {
         GetComponent<Collider>().isTrigger = true;
         rendu = GetComponentInChildren<Renderer>();
+        lumiere = GetComponentInChildren<Light>();
+        if (lumiere != null) lumiere.color = couleurAllumee;
         groupe = GetComponentInParent<GroupeBonus>();
         bloc = new MaterialPropertyBlock();
-        Appliquer(false);
+        phase = transform.GetSiblingIndex() * 0.33f;   // chenillard : chaque insert est décalé
+        AppliquerNiveau(luminositeEteinte);
+    }
+
+    void Update()
+    {
+        if (Allumee || !clignoterEteinte || Time.time < forceJusqua) return;
+        float k = 0.5f + 0.5f * Mathf.Sin((Time.time * vitesseClignotement - phase) * 2f * Mathf.PI);
+        AppliquerNiveau(luminositeEteinte * (0.35f + 0.65f * k));
     }
 
     void OnTriggerEnter(Collider other)
@@ -59,17 +83,29 @@ public class CibleBonus : MonoBehaviour
     public void Allumer(bool allumer)
     {
         Allumee = allumer;
-        Appliquer(allumer);
+        AppliquerNiveau(allumer ? 1f : luminositeEteinte);
     }
 
-    // Utilisé par le groupe pour faire clignoter les pastilles (sans changer l'état)
+    // Utilisé par le groupe pour faire clignoter les inserts (sans changer l'état)
     public void Appliquer(bool lumineux)
     {
-        if (rendu == null) return;
-        rendu.GetPropertyBlock(bloc);
-        Color c = lumineux ? couleurAllumee : couleurEteinte;
-        bloc.SetColor("_BaseColor", c);
-        bloc.SetColor("_EmissionColor", lumineux ? c * intensiteAllumee : c * 0.3f);
-        rendu.SetPropertyBlock(bloc);
+        forceJusqua = Time.time + 0.3f;
+        AppliquerNiveau(lumineux ? 1f : 0.1f);
+    }
+
+    // niveau : 0 = noir, 1 = allumé à fond
+    void AppliquerNiveau(float niveau)
+    {
+        if (rendu != null)
+        {
+            rendu.GetPropertyBlock(bloc);
+            Color c = couleurAllumee * Mathf.Lerp(0.25f, 1f, niveau);
+            c.a = 1f;
+            bloc.SetColor("_BaseColor", c);
+            bloc.SetColor("_EmissionColor", couleurAllumee * (niveau * niveau * intensiteAllumee));
+            rendu.SetPropertyBlock(bloc);
+        }
+        if (lumiere != null)
+            lumiere.intensity = niveau >= 0.99f ? intensiteLumiere : intensiteLumiere * niveau * 0.3f;
     }
 }

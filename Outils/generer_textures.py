@@ -107,3 +107,65 @@ pastille = np.clip(0.12 * fond + 0.9 * etoile + 0.8 * anneau, 0, 1)
 img = np.stack([pastille] * 3, -1)
 Image.fromarray((img * 255).astype(np.uint8)).save(os.path.join(sortie, "Bonus_Pastille.png"))
 print("écrit Bonus_Pastille.png")
+
+
+# ------------------------------------------------------------------ Inserts (style "lentilles" de flipper)
+# Formes découpées (canal alpha) : cadre sombre + verre bombé avec reflet. La couleur vient du matériau.
+from PIL import ImageDraw, ImageFont, ImageFilter
+
+def police(taille):
+    for nom in ("arialbd.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf"):
+        try:
+            return ImageFont.truetype(nom, taille)
+        except OSError:
+            pass
+    return ImageFont.load_default()
+
+def verre(masque_int, w, h, cx, cy):
+    """Dégradé de verre bombé (clair au centre) + reflet en haut à gauche, dans le masque intérieur."""
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    d = np.hypot((xx - cx) / (w * 0.5), (yy - cy) / (h * 0.5))
+    base = np.clip(1.0 - 0.45 * d, 0.45, 1.0)
+    reflet = np.exp(-(((xx - w * 0.33) / (w * 0.13)) ** 2 + ((yy - h * 0.25) / (h * 0.07)) ** 2)) * 0.6
+    return base, reflet
+
+def insert(nom, w, h, dessiner_forme, zone_pointe=None, texte=None):
+    S = 4  # sur-échantillonnage pour des bords propres
+    m = Image.new("L", (w * S, h * S), 0)
+    dessiner_forme(ImageDraw.Draw(m), w * S, h * S)
+    masque = np.asarray(m.resize((w, h), Image.LANCZOS)).astype(np.float32) / 255
+    interieur = np.asarray(m.filter(ImageFilter.MinFilter(4 * S + 1)).resize((w, h), Image.LANCZOS)).astype(np.float32) / 255
+
+    base, reflet = verre(interieur, w, h, w / 2, h * 0.55)
+    rgb = np.stack([base] * 3, -1)
+    if zone_pointe is not None:                      # pointe colorée (rouge chaud)
+        pointe = zone_pointe(w, h)[..., None]
+        rgb = rgb * (1 - pointe) + np.array([1.0, 0.25, 0.12]) * base[..., None] * pointe
+    rgb = rgb * interieur[..., None] + np.array([0.18, 0.17, 0.16]) * (1 - interieur[..., None])  # cadre
+    rgb = np.clip(rgb + (reflet * interieur)[..., None], 0, 1)
+
+    img = Image.fromarray((rgb * 255).astype(np.uint8))
+    if texte:
+        d = ImageDraw.Draw(img)
+        f = police(int(h * 0.17))
+        bb = d.textbbox((0, 0), texte, font=f)
+        d.text(((w - (bb[2] - bb[0])) / 2 - bb[0], (h - (bb[3] - bb[1])) / 2 - bb[1]), texte, font=f, fill=(30, 22, 18))
+    img.putalpha(Image.fromarray((masque * 255).astype(np.uint8)))
+    img.save(os.path.join(sortie, nom))
+    print("écrit", nom)
+
+def forme_fleche(d, W, H):
+    r = W * 0.46
+    d.ellipse([W / 2 - r, H - 2 * r - W * 0.04, W / 2 + r, H - W * 0.04], fill=255)        # bas arrondi
+    d.rectangle([W / 2 - r, H * 0.36, W / 2 + r, H - r - W * 0.04], fill=255)             # corps
+    d.polygon([(W / 2 - r, H * 0.36), (W / 2 + r, H * 0.36), (W / 2, H * 0.015)], fill=255)  # pointe
+
+def zone_pointe_fleche(w, h):
+    yy = np.mgrid[0:h, 0:w][0].astype(np.float32)
+    return np.clip((h * 0.33 - yy) / (h * 0.04), 0, 1)
+
+def forme_rond(d, W, H):
+    d.ellipse([W * 0.03, H * 0.03, W * 0.97, H * 0.97], fill=255)
+
+insert("Insert_Fleche.png", 256, 512, forme_fleche, zone_pointe=zone_pointe_fleche)
+insert("Insert_Rond.png", 256, 256, forme_rond, texte="BONUS")
