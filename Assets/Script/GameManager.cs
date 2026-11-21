@@ -42,7 +42,9 @@ public class GameManager : MonoBehaviour
     Quaternion rotationDepart;
     bool enRemiseEnJeu;
     Renderer[] rendusBille;
-    GUIStyle style, styleGrand;
+    GUIStyle style, styleGrand, styleMessage;
+    string message;
+    float finMessage;
     Pinball_input controles;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -139,7 +141,16 @@ public class GameManager : MonoBehaviour
         Score = 0;
         BilleActuelle = 1;
         PartieTerminee = false;
+        foreach (var groupe in FindObjectsByType<GroupeBonus>())
+            groupe.Reinitialiser();
         PlacerBille();
+    }
+
+    // Message temporaire au centre en haut de l'écran (BOOST, BONUS...)
+    public void AfficherMessage(string texte, float duree = 1.5f)
+    {
+        message = texte;
+        finMessage = Time.time + duree;
     }
 
     // ---------------------------------------------------------------- interne
@@ -214,6 +225,16 @@ public class GameManager : MonoBehaviour
         Ombre(new Rect(20, 15, 600, 60), $"SCORE  {Score:N0}", style);
         Ombre(new Rect(20, 15 + tailleTexte * 1.3f, 600, 60), $"BALLE  {Mathf.Min(BilleActuelle, billesParPartie)} / {billesParPartie}", style);
         Ombre(new Rect(20, 15 + tailleTexte * 2.6f, 600, 60), $"RECORD  {Record:N0}", style);
+
+        if (!string.IsNullOrEmpty(message) && Time.time < finMessage)
+        {
+            if (styleMessage == null)
+            {
+                styleMessage = new GUIStyle(style) { fontSize = Mathf.RoundToInt(tailleTexte * 1.4f), alignment = TextAnchor.MiddleCenter };
+                styleMessage.normal.textColor = new Color(1f, 0.75f, 0.2f);
+            }
+            Ombre(new Rect(0, Screen.height * 0.18f, Screen.width, tailleTexte * 2f), message, styleMessage);
+        }
 
         if (PartieTerminee)
         {
