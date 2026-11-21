@@ -15,7 +15,7 @@ using UnityEngine.SceneManagement;
 //  - les pastilles de bonus au sol et les textures des murs.
 // On peut le relancer sans risque : il réutilise les objets déjà créés (même nom).
 // Tout est annulable avec Ctrl+Z.
-public static class InstallateurFlipper
+public static partial class InstallateurFlipper
 {
     const string NomZoneLanceur = "Zone_Lanceur";
     const string NomZoneDrain = "Zone_Drain";
@@ -250,6 +250,9 @@ public static class InstallateurFlipper
 
         // ---------------------------------------------------------------- 13. Textures des murs
         AppliquerTexturesMurs(rapport, aVerifier);
+
+        // ---------------------------------------------------------------- 14. Sons
+        BrancherSons(rapport);
 
         // ---------------------------------------------------------------- Fin
         Undo.CollapseUndoOperations(groupeUndo);

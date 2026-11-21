@@ -21,6 +21,10 @@ public class BoostRail : MonoBehaviour
 
     [Header("Score")]
     public int pointsEntree = 500;
+
+    [Header("Son")]
+    public AudioClip son;
+    [Range(0f, 1f)] public float volume = 0.8f;
     [Tooltip("Temps minimum entre deux bonus d'entrée (une montée = un bonus).")]
     public float delaiPoints = 2f;
     public string message = "BOOST !";
@@ -38,6 +42,7 @@ public class BoostRail : MonoBehaviour
             GameManager.Instance.AjouterPoints(pointsEntree);
             GameManager.Instance.AfficherMessage($"{message}  +{pointsEntree}");
         }
+        Sons.Jouer(this, son, volume, 0.02f);
     }
 
     void OnCollisionStay(Collision collision)

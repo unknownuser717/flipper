@@ -10,6 +10,10 @@ public class CibleBonus : MonoBehaviour
 {
     [Tooltip("Points à chaque passage.")]
     public int points = 250;
+
+    [Header("Son")]
+    public AudioClip son;
+    [Range(0f, 1f)] public float volume = 0.7f;
     [Tooltip("Temps minimum entre deux passages comptés.")]
     public float delaiMinimum = 0.3f;
 
@@ -72,6 +76,8 @@ public class CibleBonus : MonoBehaviour
 
         if (GameManager.Instance != null)
             GameManager.Instance.AjouterPoints(points);
+        // Plus fort quand l'insert s'allume que quand il l'était déjà
+        Sons.Jouer(this, son, Allumee ? volume * 0.5f : volume);
 
         if (!Allumee)
         {

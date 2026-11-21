@@ -11,6 +11,10 @@ public class GroupeBonus : MonoBehaviour
     public bool multiplicateur = true;
     public string message = "BONUS";
 
+    [Header("Son")]
+    public AudioClip son;
+    [Range(0f, 1f)] public float volume = 0.9f;
+
     [Header("Clignotement")]
     public int nbClignotements = 6;
     public float dureeClignotement = 0.12f;
@@ -39,6 +43,7 @@ public class GroupeBonus : MonoBehaviour
                 ? $"{message} x{nbCompletes}  +{bonus}"
                 : $"{message}  +{bonus}");
         }
+        Sons.Jouer(this, son, volume, 0f);
         StartCoroutine(Clignoter());
     }
 

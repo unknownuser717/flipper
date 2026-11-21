@@ -7,6 +7,10 @@ public class BumperEffect : MonoBehaviour
 {
     [Header("Score")]
     public int points = 100;
+
+    [Header("Son")]
+    public AudioClip son;
+    [Range(0f, 1f)] public float volume = 0.8f;
     [Tooltip("Temps minimum entre deux touches comptées.")]
     public float delaiMinimum = 0.1f;
 
@@ -84,6 +88,7 @@ public class BumperEffect : MonoBehaviour
             dernierChoc = Time.time;
             if (GameManager.Instance != null)
                 GameManager.Instance.AjouterPoints(points);
+            Sons.Jouer(this, son, volume);
         }
 
         float force = Mathf.Max(0.1f, impulsion + Random.Range(-variationImpulsion, variationImpulsion));

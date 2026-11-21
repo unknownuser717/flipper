@@ -14,6 +14,9 @@ public class GameManager : MonoBehaviour
     public int billesParPartie = 3;
     [Tooltip("Temps (secondes) avant que la bille revienne au lanceur.")]
     public float delaiRemiseEnJeu = 1f;
+    [Tooltip("Son joué quand la bille tombe dans le drain (ou sort de la table).")]
+    public AudioClip sonBillePerdue;
+    [Range(0f, 1f)] public float volumeBillePerdue = 0.8f;
 
     [Header("Bille")]
     [Tooltip("Laisser vide : trouve la bille par son tag \"Ball\" ou son nom \"la_bille\".")]
@@ -134,6 +137,7 @@ public class GameManager : MonoBehaviour
     public void BillePerdue()
     {
         if (enRemiseEnJeu || PartieTerminee) return;
+        Sons.Jouer(this, sonBillePerdue, volumeBillePerdue, 0f);
         StartCoroutine(RemiseEnJeu());
     }
 

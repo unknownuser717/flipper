@@ -169,3 +169,17 @@ def forme_rond(d, W, H):
 
 insert("Insert_Fleche.png", 256, 512, forme_fleche, zone_pointe=zone_pointe_fleche)
 insert("Insert_Rond.png", 256, 256, forme_rond, texte="BONUS")
+
+
+# ------------------------------------------------------------------ Flamme (particules des arbres en feu)
+# Tache blanche douce (la couleur vient du système de particules), un peu étirée vers le haut.
+T = 128
+yy, xx = np.mgrid[0:T, 0:T].astype(np.float32)
+dx = (xx - T / 2) / (T * 0.42)
+dy = (yy - T * 0.58) / (T * 0.5)
+dy = np.where(dy < 0, dy * 0.75, dy * 1.25)        # plus pointu en haut, plus rond en bas
+d = np.sqrt(dx ** 2 + dy ** 2)
+alpha = np.clip(1 - d, 0, 1) ** 1.8
+rgba = np.stack([np.ones_like(alpha), np.ones_like(alpha), np.ones_like(alpha), alpha], -1)
+Image.fromarray((rgba * 255).astype(np.uint8), "RGBA").save(os.path.join(sortie, "Flamme.png"))
+print("écrit Flamme.png")
