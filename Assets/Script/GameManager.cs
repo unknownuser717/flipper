@@ -29,7 +29,9 @@ public class GameManager : MonoBehaviour
 
     [Header("Affichage")]
     public bool afficherScore = true;
-    public int tailleTexte = 36;
+    [Tooltip("Taille du texte en fraction de la hauteur de l'écran (0,022 = 24 px en 1080p).")]
+    [Range(0.012f, 0.05f)]
+    public float tailleRelative = 0.022f;
 
     public int Score { get; private set; }
     public int BilleActuelle { get; private set; } = 1;
@@ -42,7 +44,8 @@ public class GameManager : MonoBehaviour
     Quaternion rotationDepart;
     bool enRemiseEnJeu;
     Renderer[] rendusBille;
-    GUIStyle style, styleGrand, styleMessage;
+    GUIStyle style, styleGrand, styleMessage, styleSousTitre;
+    int taillePolice;
     string message;
     float finMessage;
     Pinball_input controles;
@@ -215,42 +218,51 @@ public class GameManager : MonoBehaviour
     {
         if (!afficherScore) return;
 
-        if (style == null)
-        {
-            style = new GUIStyle(GUI.skin.label) { fontSize = tailleTexte, fontStyle = FontStyle.Bold };
-            style.normal.textColor = Color.white;
-            styleGrand = new GUIStyle(style) { fontSize = tailleTexte * 2, alignment = TextAnchor.MiddleCenter };
-        }
+        // Taille du texte proportionnelle à la hauteur de l'écran (pareil en 720p, 1080p, 4K...)
+        int taille = Mathf.Max(12, Mathf.RoundToInt(Screen.height * tailleRelative));
+        if (style == null || taillePolice != taille)
+            CreerStyles(taille);
 
-        Ombre(new Rect(20, 15, 600, 60), $"SCORE  {Score:N0}", style);
-        Ombre(new Rect(20, 15 + tailleTexte * 1.3f, 600, 60), $"BALLE  {Mathf.Min(BilleActuelle, billesParPartie)} / {billesParPartie}", style);
-        Ombre(new Rect(20, 15 + tailleTexte * 2.6f, 600, 60), $"RECORD  {Record:N0}", style);
+        // Bandeau compact sur une seule ligne, en haut à gauche
+        string infos = $"SCORE <b>{Score:N0}</b>     BALLE <b>{Mathf.Min(BilleActuelle, billesParPartie)}/{billesParPartie}</b>     RECORD <b>{Record:N0}</b>";
+        Vector2 dim = style.CalcSize(new GUIContent(infos));
+        float marge = taille * 0.5f;
+        var fond = new Rect(taille * 0.5f, taille * 0.4f, dim.x + marge * 2f, dim.y + marge * 0.6f);
+        GUI.color = new Color(0f, 0f, 0f, 0.45f);
+        GUI.DrawTexture(fond, Texture2D.whiteTexture);
+        GUI.color = Color.white;
+        GUI.Label(new Rect(fond.x + marge, fond.y + marge * 0.3f, dim.x, dim.y), infos, style);
 
+        // Message temporaire (BOOST, BONUS...)
         if (!string.IsNullOrEmpty(message) && Time.time < finMessage)
-        {
-            if (styleMessage == null)
-            {
-                styleMessage = new GUIStyle(style) { fontSize = Mathf.RoundToInt(tailleTexte * 1.4f), alignment = TextAnchor.MiddleCenter };
-                styleMessage.normal.textColor = new Color(1f, 0.75f, 0.2f);
-            }
-            Ombre(new Rect(0, Screen.height * 0.18f, Screen.width, tailleTexte * 2f), message, styleMessage);
-        }
+            Ombre(new Rect(0, Screen.height * 0.14f, Screen.width, taille * 2.5f), message, styleMessage);
 
         if (PartieTerminee)
         {
-            var r = new Rect(0, Screen.height / 2f - tailleTexte * 2, Screen.width, tailleTexte * 2.5f);
+            var r = new Rect(0, Screen.height * 0.5f - taille * 3f, Screen.width, taille * 3.5f);
             Ombre(r, "GAME OVER", styleGrand);
-            r.y += tailleTexte * 2.5f;
-            var petit = new GUIStyle(styleGrand) { fontSize = tailleTexte };
-            Ombre(r, "Appuyez sur ESPACE pour rejouer", petit);
+            r.y += taille * 3.2f;
+            r.height = taille * 2f;
+            Ombre(r, "Appuyez sur ESPACE pour rejouer", styleSousTitre);
         }
+    }
+
+    void CreerStyles(int taille)
+    {
+        taillePolice = taille;
+        style = new GUIStyle(GUI.skin.label) { fontSize = taille, richText = true, wordWrap = false };
+        style.normal.textColor = new Color(1f, 1f, 1f, 0.92f);
+        styleMessage = new GUIStyle(style) { fontSize = Mathf.RoundToInt(taille * 1.6f), fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+        styleMessage.normal.textColor = new Color(1f, 0.75f, 0.2f);
+        styleGrand = new GUIStyle(style) { fontSize = taille * 3, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+        styleSousTitre = new GUIStyle(style) { alignment = TextAnchor.MiddleCenter };
     }
 
     static void Ombre(Rect r, string texte, GUIStyle s)
     {
         var c = s.normal.textColor;
         s.normal.textColor = new Color(0, 0, 0, 0.7f);
-        GUI.Label(new Rect(r.x + 3, r.y + 3, r.width, r.height), texte, s);
+        GUI.Label(new Rect(r.x + 2, r.y + 2, r.width, r.height), texte, s);
         s.normal.textColor = c;
         GUI.Label(r, texte, s);
     }

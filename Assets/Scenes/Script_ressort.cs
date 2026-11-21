@@ -185,13 +185,16 @@ public class Script_ressort : MonoBehaviour
     {
         if (!afficherJauge || !enCharge) return;
 
-        float largeur = 220f, hauteur = 22f;
-        var cadre = new Rect(Screen.width - largeur - 20f, Screen.height - hauteur - 20f, largeur, hauteur);
-        GUI.color = new Color(0f, 0f, 0f, 0.6f);
+        // Taille proportionnelle à l'écran (même échelle que le score)
+        float u = Screen.height / 1080f;
+        float largeur = 160f * u, hauteur = 12f * u, marge = 14f * u;
+        var cadre = new Rect(Screen.width - largeur - marge, Screen.height - hauteur - marge, largeur, hauteur);
+        GUI.color = new Color(0f, 0f, 0f, 0.5f);
         GUI.DrawTexture(cadre, Texture2D.whiteTexture);
         GUI.color = Color.Lerp(Color.yellow, Color.red, charge);
         GUI.DrawTexture(new Rect(cadre.x + 2f, cadre.y + 2f, (largeur - 4f) * charge, hauteur - 4f), Texture2D.whiteTexture);
         GUI.color = Color.white;
-        GUI.Label(new Rect(cadre.x, cadre.y - 22f, largeur, 22f), $"PUISSANCE {Mathf.RoundToInt(charge * 100f)} %");
+        var styleJauge = new GUIStyle(GUI.skin.label) { fontSize = Mathf.Max(10, Mathf.RoundToInt(18f * u)), alignment = TextAnchor.LowerRight };
+        GUI.Label(new Rect(cadre.x, cadre.y - 26f * u, largeur, 24f * u), $"PUISSANCE {Mathf.RoundToInt(charge * 100f)} %", styleJauge);
     }
 }
