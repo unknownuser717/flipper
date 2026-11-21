@@ -1,55 +1,62 @@
 using UnityEngine;
 using System.Collections;
 
+// Bumper : donne des points et repousse la bille quand elle le touche, avec un flash (couleur, lumière, taille).
+// À mettre sur l'objet racine du bumper. Flipper > Installer l'ajoute automatiquement (avec les colliders).
 public class BumperEffect : MonoBehaviour
 {
-    [Header("Propulsion de la bille")]
-    public float launchImpulse = 8f;
-    public float launchImpulseVariation = 3f;
+    [Header("Score")]
+    public int points = 100;
+    [Tooltip("Temps minimum entre deux touches comptées.")]
+    public float delaiMinimum = 0.1f;
 
-    [Header("Paramètres de l'Effet Lumineux")]
-    public Light bumperLight;
-    public float targetLightIntensity = 20f;
+    [Header("Propulsion de la bille (vitesse ajoutée, en m/s)")]
+    public float impulsion = 8f;
+    public float variationImpulsion = 2f;
 
-    [Header("Paramètres de l'Effet de Transition Visuelle")]
-    public Color hitColor = Color.white;
-    public float scaleMultiplier = 1.2f;
+    [Header("Effet lumineux (optionnel)")]
+    public Light lumiere;
+    public float intensiteLumiere = 20f;
 
-    [Header("Paramètres de Durée (Transition Fluide)")]
-    public float transitionUpDuration = 0.05f;
-    public float transitionDownDuration = 0.2f;
+    [Header("Effet visuel")]
+    public Color couleurTouche = Color.white;
+    public float multiplicateurEchelle = 1.2f;
+    [Tooltip("Enfant à agrandir lors du choc. Laisser vide = automatique (seulement s'il n'a pas de collider).")]
+    public Transform visuel;
 
-    private Vector3 originalScale;
-    private Color originalColor;
-    private Renderer bumperRenderer;
-    public Transform bumperVisual;
-    private bool isAnimating;
+    [Header("Durées de l'effet")]
+    public float dureeMontee = 0.05f;
+    public float dureeDescente = 0.2f;
+
+    private Vector3 echelleOrigine;
+    private Color couleurOrigine;
+    private Renderer rendu;
+    private bool enAnimation;
+    private float dernierChoc = -10f;
 
     void Start()
     {
-        if (bumperLight != null)
-            bumperLight.intensity = 0f;
+        if (lumiere != null)
+            lumiere.intensity = 0f;
 
-        bumperRenderer = GetComponentInChildren<Renderer>();
-        if (bumperRenderer != null)
+        rendu = GetComponentInChildren<Renderer>();
+        if (rendu != null)
         {
-            if (bumperVisual == null && bumperRenderer.transform != transform)
-                bumperVisual = bumperRenderer.transform;
+            if (visuel == null && rendu.transform != transform)
+                visuel = rendu.transform;
 
-            if (bumperRenderer.material.HasProperty("_Color"))
-                originalColor = bumperRenderer.material.color;
-            else if (bumperRenderer.material.HasProperty("_BaseColor"))
-                originalColor = bumperRenderer.material.GetColor("_BaseColor");
+            if (rendu.material.HasProperty("_BaseColor"))
+                couleurOrigine = rendu.material.GetColor("_BaseColor");
+            else if (rendu.material.HasProperty("_Color"))
+                couleurOrigine = rendu.material.color;
         }
 
-        if (bumperVisual == transform)
-        {
-            Debug.LogWarning("Assignez à Bumper Visual un enfant sans collider pour animer l'échelle sans agrandir le collider du bumper.", this);
-            bumperVisual = null;
-        }
+        // On n'agrandit pas un objet qui porte un collider (sinon le collider grossit aussi)
+        if (visuel != null && (visuel == transform || visuel.GetComponent<Collider>() != null))
+            visuel = null;
 
-        if (bumperVisual != null)
-            originalScale = bumperVisual.localScale;
+        if (visuel != null)
+            echelleOrigine = visuel.localScale;
     }
 
     void OnCollisionEnter(Collision collision)
@@ -57,103 +64,74 @@ public class BumperEffect : MonoBehaviour
         if (!Bille.Est(collision.gameObject))
             return;
 
-        Rigidbody ballRigidbody = collision.rigidbody;
-        if (ballRigidbody == null)
-        {
-            Debug.LogWarning("Le bumper a touché la bille, mais aucun Rigidbody n'a été trouvé.", collision.gameObject);
+        Rigidbody rbBille = collision.rigidbody;
+        if (rbBille == null || rbBille.isKinematic)
             return;
-        }
 
-        if (ballRigidbody.isKinematic)
+        // Direction : du centre du bumper vers la bille, à plat
+        Vector3 direction = rbBille.worldCenterOfMass - transform.position;
+        direction.y = 0f;
+        if (direction.sqrMagnitude < 0.0001f)
         {
-            Debug.LogWarning("La bille ne peut pas être propulsée : son Rigidbody est en mode Is Kinematic.", ballRigidbody);
+            direction = collision.GetContact(0).point - transform.position;
+            direction.y = 0f;
+        }
+        if (direction.sqrMagnitude < 0.0001f)
             return;
-        }
 
-        Vector3 launchDirection = ballRigidbody.worldCenterOfMass - transform.position;
-        launchDirection.y = 0f;
-
-        if (launchDirection.sqrMagnitude < 0.0001f)
+        if (Time.time - dernierChoc >= delaiMinimum)
         {
-            launchDirection = collision.GetContact(0).point - transform.position;
-            launchDirection.y = 0f;
+            dernierChoc = Time.time;
+            if (GameManager.Instance != null)
+                GameManager.Instance.AjouterPoints(points);
         }
 
-        if (launchDirection.sqrMagnitude < 0.0001f)
-        {
-            Debug.LogWarning("Impossible de déterminer la direction radiale de propulsion du bumper.", this);
-            return;
-        }
+        float force = Mathf.Max(0.1f, impulsion + Random.Range(-variationImpulsion, variationImpulsion));
+        rbBille.AddForce(direction.normalized * force, ForceMode.VelocityChange);
 
-        float currentLaunchImpulse = launchImpulse + Random.Range(-launchImpulseVariation, launchImpulseVariation);
-        currentLaunchImpulse = Mathf.Max(0.1f, currentLaunchImpulse);
-        ballRigidbody.AddForce(launchDirection.normalized * currentLaunchImpulse, ForceMode.Impulse);
-
-        if (!isAnimating)
-            StartCoroutine(SmoothAnimateBumper());
+        if (!enAnimation)
+            StartCoroutine(AnimerBumper());
     }
 
-    IEnumerator SmoothAnimateBumper()
+    IEnumerator AnimerBumper()
     {
-        isAnimating = true;
+        enAnimation = true;
 
-        Vector3 hitScale = new Vector3(
-            originalScale.x * scaleMultiplier,
-            originalScale.y,
-            originalScale.z * scaleMultiplier);
+        Vector3 echelleChoc = new Vector3(
+            echelleOrigine.x * multiplicateurEchelle,
+            echelleOrigine.y,
+            echelleOrigine.z * multiplicateurEchelle);
 
-        float timerUp = 0f;
-        while (timerUp < transitionUpDuration)
+        for (float t = 0f; t < dureeMontee; t += Time.deltaTime)
         {
-            timerUp += Time.deltaTime;
-            float t = Mathf.Clamp01(timerUp / transitionUpDuration);
-
-            if (bumperVisual != null)
-                bumperVisual.localScale = Vector3.Lerp(originalScale, hitScale, t);
-
-            ApplyColor(Color.Lerp(originalColor, hitColor, t));
-
-            if (bumperLight != null)
-                bumperLight.intensity = Mathf.Lerp(0f, targetLightIntensity, t);
-
+            Appliquer(Mathf.Clamp01(t / dureeMontee), echelleChoc);
             yield return null;
         }
-
-        float timerDown = 0f;
-        while (timerDown < transitionDownDuration)
+        for (float t = 0f; t < dureeDescente; t += Time.deltaTime)
         {
-            timerDown += Time.deltaTime;
-            float t = Mathf.Clamp01(timerDown / transitionDownDuration);
-
-            if (bumperVisual != null)
-                bumperVisual.localScale = Vector3.Lerp(hitScale, originalScale, t);
-
-            ApplyColor(Color.Lerp(hitColor, originalColor, t));
-
-            if (bumperLight != null)
-                bumperLight.intensity = Mathf.Lerp(targetLightIntensity, 0f, t);
-
+            Appliquer(1f - Mathf.Clamp01(t / dureeDescente), echelleChoc);
             yield return null;
         }
+        Appliquer(0f, echelleChoc);
 
-        if (bumperVisual != null)
-            bumperVisual.localScale = originalScale;
-
-        ApplyColor(originalColor);
-        if (bumperLight != null)
-            bumperLight.intensity = 0f;
-
-        isAnimating = false;
+        enAnimation = false;
     }
 
-    void ApplyColor(Color color)
+    // k = 0 : état normal, k = 1 : état "touché"
+    void Appliquer(float k, Vector3 echelleChoc)
     {
-        if (bumperRenderer == null)
-            return;
+        if (visuel != null)
+            visuel.localScale = Vector3.Lerp(echelleOrigine, echelleChoc, k);
 
-        if (bumperRenderer.material.HasProperty("_Color"))
-            bumperRenderer.material.color = color;
-        else if (bumperRenderer.material.HasProperty("_BaseColor"))
-            bumperRenderer.material.SetColor("_BaseColor", color);
+        if (lumiere != null)
+            lumiere.intensity = Mathf.Lerp(0f, intensiteLumiere, k);
+
+        if (rendu == null)
+            return;
+        Color couleur = Color.Lerp(couleurOrigine, couleurTouche, k);
+        if (rendu.material.HasProperty("_BaseColor"))
+            rendu.material.SetColor("_BaseColor", couleur);
+        else if (rendu.material.HasProperty("_Color"))
+            rendu.material.color = couleur;
     }
 }
