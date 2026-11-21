@@ -1,0 +1,92 @@
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+public class Script_ressort : MonoBehaviour
+{
+    public float distance = 2f;
+    public float vitesseAller = 3f;
+    public float variationVitesse = 3f; // marge aléatoire +/- autour de vitesseAller
+    public float vitesseRetour = 1f;
+    public Vector3 direction = Vector3.forward;
+
+    public AudioSource audioSource;
+    public AudioClip sonRessort;
+
+    private Rigidbody rb;
+    private Vector3 positionDepart;
+    private Vector3 positionArrivee;
+    private bool enMouvement = false;
+    private bool versArrivee = true;
+    private float vitesseAllerActuelle;
+
+    private Pinball_input controls;
+
+    void Awake()
+    {
+        controls = new Pinball_input();
+    }
+
+    void OnEnable()
+    {
+        controls.Enable();
+    }
+
+    void OnDisable()
+    {
+        controls.Disable();
+    }
+
+    void Start()
+    {
+        rb = GetComponent<Rigidbody>();
+        positionDepart = transform.position;
+
+        Vector3 directionMonde = transform.TransformDirection(direction.normalized);
+        positionArrivee = positionDepart + directionMonde * distance;
+    }
+
+    void Update()
+    {
+
+        // Bouton de la borne OU barre d'espace (le clavier peut être absent)
+        bool appui = controls.inputs.start.WasPressedThisFrame()
+                  || (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame);
+
+        // Ne relance pas le ressort tant qu'il est déjà en mouvement
+        if (appui && !enMouvement)
+        {
+            enMouvement = true;
+            versArrivee = true;
+
+            // Joue le son du ressort au déclenchement
+            if (audioSource != null && sonRessort != null)
+            {
+                audioSource.PlayOneShot(sonRessort);
+            }
+
+            // Nouvelle vitesse aléatoire à chaque déclenchement
+            vitesseAllerActuelle = vitesseAller + Random.Range(-variationVitesse, variationVitesse);
+            vitesseAllerActuelle = Mathf.Max(0.1f, vitesseAllerActuelle); // évite une vitesse négative ou nulle
+        }
+    }
+
+    void FixedUpdate()
+    {
+        if (enMouvement && rb != null)
+        {
+            Vector3 cible = versArrivee ? positionArrivee : positionDepart;
+            float vitesse = versArrivee ? vitesseAllerActuelle : vitesseRetour;
+
+            Vector3 nouvellePosition = Vector3.MoveTowards(rb.position, cible, vitesse * Time.fixedDeltaTime);
+            rb.MovePosition(nouvellePosition);
+
+            if (Vector3.Distance(nouvellePosition, cible) < 0.01f)
+            {
+                if (versArrivee)
+                    versArrivee = false;
+                else
+                    enMouvement = false;
+            }
+        }
+    }
+}
