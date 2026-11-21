@@ -13,8 +13,8 @@ public class Flipper : MonoBehaviour
     [Header("Mouvement")]
     [Tooltip("Angle de levée en degrés (depuis la position de repos).")]
     public float angleMax = 50f;
-    [Tooltip("Vitesse de levée en degrés/seconde.")]
-    public float vitesseMontee = 1800f;
+    [Tooltip("Vitesse de levée en degrés/seconde. 900 ≈ bille à 15 m/s (atteint le haut de la table). Trop haut = la bille s'envole.")]
+    public float vitesseMontee = 900f;
     [Tooltip("Vitesse de retour en degrés/seconde.")]
     public float vitesseDescente = 900f;
 

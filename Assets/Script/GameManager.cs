@@ -24,6 +24,8 @@ public class GameManager : MonoBehaviour
     public float hauteurPerte = 3f;
     [Tooltip("Si la bille s'éloigne plus que cette distance de son point de départ, elle est perdue (sortie de table).")]
     public float distanceMaxTable = 60f;
+    [Tooltip("Vitesse maximale de la bille (m/s). Empêche un choc trop violent de l'envoyer hors de la machine.")]
+    public float vitesseMaxBille = 25f;
 
     [Header("Affichage")]
     public bool afficherScore = true;
@@ -86,6 +88,14 @@ public class GameManager : MonoBehaviour
         rendusBille = bille.GetComponentsInChildren<Renderer>();
         positionDepart = pointDeDepart != null ? pointDeDepart.position : bille.position;
         rotationDepart = bille.rotation;
+    }
+
+    void FixedUpdate()
+    {
+        // Limite de vitesse : la bille ne peut pas être projetée hors de la machine
+        if (bille == null || bille.isKinematic) return;
+        if (bille.linearVelocity.sqrMagnitude > vitesseMaxBille * vitesseMaxBille)
+            bille.linearVelocity = bille.linearVelocity.normalized * vitesseMaxBille;
     }
 
     void Update()

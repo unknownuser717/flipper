@@ -149,8 +149,20 @@ public static class InstallateurFlipper
             EditorUtility.SetDirty(script);
         }
 
-        // ---------------------------------------------------------------- 8 bis. Courbe en haut du couloir
+        // ---------------------------------------------------------------- 8 bis. Courbe en haut du couloir + vitre
         ConstruireGuideHaut(bille, rayon, normale, hautTable, rapport, aVerifier);
+        ConstruireVitre(depart.transform.position - normale * rayon, diametre, normale, hautTable, rapport);
+
+        // Flippers trop rapides : à 1800°/s la bille part à ~26 m/s et s'envole hors de la machine
+        foreach (GameObject go in TousLesObjets())
+        {
+            Flipper f = go.GetComponent<Flipper>();
+            if (f == null || f.vitesseMontee <= 1000f) continue;
+            Undo.RecordObject(f, "Vitesse flipper");
+            f.vitesseMontee = 900f;
+            EditorUtility.SetDirty(f);
+            rapport.AppendLine($"- {go.name} : vitesse de levée réduite à 900°/s.");
+        }
 
         // ---------------------------------------------------------------- 9. Zone de drain
         Transform gauche = TrouverParNom("flipper_gauche")?.transform;
@@ -562,6 +574,36 @@ public static class InstallateurFlipper
         rapport.AppendLine("- Guide_Haut_Droite créé : courbe en haut du couloir qui renvoie la bille sur le plateau.");
     }
 
+    // Vitre invisible au-dessus du plateau (comme la vitre d'un vrai flipper) : la bille ne peut pas s'envoler.
+    static void ConstruireVitre(Vector3 surface, float diametre, Vector3 normale, Vector3 hautTable, StringBuilder rapport)
+    {
+        const string nom = "Vitre";
+        if (TrouverParNom(nom) != null) return;
+
+        // Centre : milieu du plateau s'il existe, sinon autour du point de départ
+        Vector3 milieu = surface;
+        GameObject plateau = TrouverParNom("Playfield");
+        if (plateau != null && plateau.GetComponent<Renderer>() != null)
+        {
+            Vector3 c = plateau.GetComponent<Renderer>().bounds.center;
+            milieu = c - normale * Vector3.Dot(c - surface, normale);   // projeté sur le plan de jeu
+        }
+
+        const float epaisseur = 0.5f;
+        float hauteur = diametre * 2f;   // le dessous de la vitre est à 2 diamètres de bille au-dessus du plateau
+
+        var vitre = new GameObject(nom);
+        Undo.RegisterCreatedObjectUndo(vitre, nom);
+        vitre.transform.SetPositionAndRotation(
+            milieu + normale * (hauteur + epaisseur * 0.5f),
+            Quaternion.LookRotation(hautTable, normale));
+        var box = vitre.AddComponent<BoxCollider>();
+        box.size = new Vector3(30f, epaisseur, 40f);   // plus grande que la table : sans effet en dehors
+        PhysicsMaterial mat = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>($"{DossierPhysique}/Plateau.physicMaterial");
+        if (mat != null) box.sharedMaterial = mat;
+        rapport.AppendLine("- Vitre créée (invisible) au-dessus du plateau : la bille ne peut plus s'envoler.");
+    }
+
     static bool RaycastHorsBille(Vector3 origine, Vector3 direction, float distance, out RaycastHit resultat)
     {
         resultat = default;
@@ -673,6 +715,7 @@ public static class InstallateurFlipper
             if (Bille.Est(hit.collider.gameObject)) continue;
             if (hit.collider.attachedRigidbody != null && !hit.collider.attachedRigidbody.isKinematic) continue;
             if (hit.collider.GetComponentInParent<Script_ressort>() != null) continue;
+            if (hit.collider.name == "Vitre") continue;   // la vitre est au-dessus de la bille, pas dessous
             resultat = hit;
             return true;
         }
