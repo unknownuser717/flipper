@@ -16,9 +16,9 @@ public class Script_ressort : MonoBehaviour
 
     [Header("Puissance du tir (vitesse donnée à la bille, en m/s)")]
     [Tooltip("Vitesse pour un simple appui court.")]
-    public float vitesseMin = 6f;
+    public float vitesseMin = 13f;
     [Tooltip("Vitesse quand la charge est à 100 %.")]
-    public float vitesseMax = 18f;
+    public float vitesseMax = 20f;
     [Tooltip("Temps (secondes) de maintien pour atteindre 100 % de charge.")]
     public float tempsChargeMax = 1.2f;
 

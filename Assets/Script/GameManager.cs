@@ -20,8 +20,8 @@ public class GameManager : MonoBehaviour
     public Rigidbody bille;
     [Tooltip("Laisser vide : la bille revient là où elle est au début du jeu (dans le couloir du lanceur).")]
     public Transform pointDeDepart;
-    [Tooltip("Si la bille tombe plus bas que (départ - cette valeur), elle est perdue. Filet de sécurité.")]
-    public float hauteurPerte = 10f;
+    [Tooltip("Si la bille tombe plus bas que (départ - cette valeur), elle est perdue (tombée de la table ou dans la caisse).")]
+    public float hauteurPerte = 3f;
     [Tooltip("Si la bille s'éloigne plus que cette distance de son point de départ, elle est perdue (sortie de table).")]
     public float distanceMaxTable = 60f;
 
