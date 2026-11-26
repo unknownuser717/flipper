@@ -48,10 +48,11 @@ public class Flipper : MonoBehaviour
             bouton = new InputAction(estGauche ? "FlipperGauche" : "FlipperDroit", InputActionType.Button);
             if (estGauche)
             {
+                // Flèches + Q (et Shift). "#(q)" = la touche où est écrit Q, quel que soit le clavier
+                // (AZERTY français ou QWERTY) ; "<Keyboard>/q" serait la position du Q américain (= A en AZERTY).
                 bouton.AddBinding("<Keyboard>/leftShift");
                 bouton.AddBinding("<Keyboard>/leftArrow");
-                bouton.AddBinding("<Keyboard>/a");
-                bouton.AddBinding("<Keyboard>/q"); // clavier AZERTY
+                bouton.AddBinding("<Keyboard>/#(q)");
                 bouton.AddBinding("<Gamepad>/leftShoulder");
                 bouton.AddBinding("<Gamepad>/leftTrigger");
             }
@@ -59,7 +60,7 @@ public class Flipper : MonoBehaviour
             {
                 bouton.AddBinding("<Keyboard>/rightShift");
                 bouton.AddBinding("<Keyboard>/rightArrow");
-                bouton.AddBinding("<Keyboard>/d");
+                bouton.AddBinding("<Keyboard>/#(d)");
                 bouton.AddBinding("<Gamepad>/rightShoulder");
                 bouton.AddBinding("<Gamepad>/rightTrigger");
             }

@@ -29,6 +29,8 @@ public static partial class InstallateurFlipper
         ("rabatoire_top_gauche",  "rabatoire_top_droite"),
         ("rabatoire_haut_gauche", "rabatoire_haut_droite"),
         ("rabatoire_bas_gauche",  "rabatoire_bas_droite"),
+        // Muret en biais contre le mur gauche (Flipper > Arbre contre le mur gauche)
+        ("rabatoire_mur_gauche",  "rabatoire_haut_droite"),
     };
 
     // Les 3 rabatoires gauches deviennent le miroir des droits, par rapport à l'axe entre les deux flippers.
@@ -98,7 +100,8 @@ public static partial class InstallateurFlipper
             GameObject cube = TrouverParNom(nomCube);
             if (cube == null)
             {
-                aVerifier.AppendLine($"- Cube \"{nomCube}\" introuvable dans la scène.");
+                if (nomCube != NomMuretMurGauche)   // celui-là n'existe qu'après "Arbre contre le mur gauche"
+                    aVerifier.AppendLine($"- Cube \"{nomCube}\" introuvable dans la scène.");
                 continue;
             }
             string chemin = $"{DossierMurets}/{nomModele}_Modele.fbx";
@@ -140,7 +143,17 @@ public static partial class InstallateurFlipper
             }
             Undo.RecordObject(modele.transform, "Placer muret");
             modele.transform.SetPositionAndRotation(cube.transform.position, cube.transform.rotation);
-            modele.transform.localScale = Vector3.one;   // le FBX est déjà à la taille du cube
+            // Le FBX est à la taille du cube d'origine ; si le cube a été rallongé (ex. muret du bas gauche
+            // prolongé jusqu'au mur), le modèle est étiré sur sa longueur seulement
+            Vector3 echelle = Vector3.one;
+            Mesh mesh = modele.GetComponentInChildren<MeshFilter>()?.sharedMesh;
+            if (mesh != null)
+            {
+                Vector3 c = cube.transform.lossyScale, m = mesh.bounds.size;
+                if (c.x >= c.z && m.x > 0.01f) echelle.x = c.x / m.x;
+                else if (c.z > c.x && m.z > 0.01f) echelle.z = c.z / m.z;
+            }
+            modele.transform.localScale = echelle;
             nb++;
         }
         rapport.AppendLine($"- {nb} muret(s) habillé(s) avec leur modèle 3D (cubes cachés, collisions et points conservés).");

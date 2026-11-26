@@ -169,7 +169,7 @@ public class Script_ressort : MonoBehaviour
     bool EntreeBloquee()
     {
         var gm = GameManager.Instance;
-        return gm != null && (gm.PartieTerminee || gm.FrameRejouer == Time.frameCount);
+        return gm != null && (gm.PartieTerminee || gm.EnMenu || gm.FrameRejouer == Time.frameCount);
     }
 
     void IgnorerCollisionBille(bool ignorer)

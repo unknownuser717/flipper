@@ -156,6 +156,8 @@ public static partial class InstallateurFlipper
 
         // ---------------------------------------------------------------- 8 bis. Courbe en haut du couloir + entrées des rails + vitre
         ConstruireGuideHaut(bille, rayon, normale, hautTable, rapport, aVerifier);
+        if (AssetDatabase.LoadAssetAtPath<GameObject>(CheminModeleGuide) != null)
+            PoserCourbesHaut(rapport, aVerifier);   // le modèle 3D remplace l'arc de cubes, + courbe gauche
         ConstruireEntreesRails(depart.transform.position - normale * rayon, normale, hautTable, rapport);
         ConfigurerAiguillages(rapport);
         ConstruireVitre(depart.transform.position - normale * rayon, diametre, normale, hautTable, rapport);
@@ -254,6 +256,16 @@ public static partial class InstallateurFlipper
         HabillerLanceur(rapport, aVerifier);
         PoserAmpoules(rapport, aVerifier);
         ConstruireEchelle(rapport, aVerifier);
+        ConstruireHautPlateau(rapport, aVerifier);
+        BoucherMuretsBas(rapport, aVerifier);
+        HabillerMurets(rapport, aVerifier);
+        PoserSecondeChance(rapport, aVerifier);
+        PoserArbreMurGauche(rapport, aVerifier);
+        InstallerBilleEnFeu(rapport);
+        PastillesAutourRampe(rapport, aVerifier);
+        ConstruireGardesRampe(rapport, aVerifier);
+        PoserScoreBackglass(rapport, aVerifier);
+        ConfigurerCameras(rapport, aVerifier);
 
         // ---------------------------------------------------------------- 14. Sons
         BrancherSons(rapport);
@@ -438,8 +450,10 @@ public static partial class InstallateurFlipper
                 return nom.Contains("screw") ? Categorie.Aucune : Categorie.CaoutchoucConvexe;
             if (n.StartsWith("metal posts"))
                 return Categorie.CaoutchoucConvexe;
-            if (n == "miscellaneous")
-                return nom.Contains("rubber") ? Categorie.CaoutchoucConvexe : Categorie.PlateauConvexe;
+            if (n.StartsWith("miscellaneous"))
+                // Les plastiques des lance-pierres sont au-dessus de la bille : jamais de collision
+                return nom.Contains("rubber") ? Categorie.CaoutchoucConvexe
+                     : nom.Contains("plastic") ? Categorie.Aucune : Categorie.PlateauConvexe;
             if (n.StartsWith("flippers"))     // modèles 3D des flippers
                 return Categorie.PlateauConvexe;
         }
@@ -605,7 +619,7 @@ public static partial class InstallateurFlipper
     {
         // Ancien arc (8 segments avec frottement) : on le supprime AVANT de mesurer le couloir
         GameObject ancienGuide = TrouverParNom(NomGuideHaut);
-        if (ancienGuide != null && ancienGuide.transform.Find(MarqueGuideV2) == null)
+        if (ancienGuide != null && ancienGuide.transform.Find(MarqueGuideV2) == null && !EstGuideModele(ancienGuide))
             Undo.DestroyObjectImmediate(ancienGuide);
         Physics.SyncTransforms();
         Vector3 depart = bille.transform.position;

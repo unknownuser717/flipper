@@ -49,6 +49,21 @@ public class GameManager : MonoBehaviour
     public event System.Action SurBillePerdue;
     /// <summary>Une nouvelle partie commence.</summary>
     public event System.Action SurNouvellePartie;
+    /// <summary>La dernière bille est perdue : la partie est finie (score final en paramètre).</summary>
+    public event System.Action<int> SurFinDePartie;
+
+    // Billes en plus gagnées (2nd chance) : la prochaine bille perdue ne compte pas
+    public int BillesEnPlus { get; private set; }
+
+    /// <summary>Donne une bille en plus : la prochaine bille perdue ne fera pas avancer le compteur.</summary>
+    public void AjouterBilleEnPlus() => BillesEnPlus++;
+
+    // Menu (MenuFlipper) : tant qu'on est dans le menu, la bille est cachée et rien ne compte
+    public bool EnMenu { get; private set; }
+    /// <summary>Position de la bille au repos dans le lanceur.</summary>
+    public Vector3 PositionDepart => positionDepart;
+    public string NomJoueur { get; private set; } = "";
+    bool menuPresent;
 
     Vector3 positionDepart;
     Quaternion rotationDepart;
@@ -103,6 +118,15 @@ public class GameManager : MonoBehaviour
         rendusBille = bille.GetComponentsInChildren<Renderer>();
         positionDepart = pointDeDepart != null ? pointDeDepart.position : bille.position;
         rotationDepart = bille.rotation;
+
+        // Avec un menu, le jeu attend qu'on appuie sur JOUER (et qu'on ait donné son nom)
+        Record = Mathf.Max(Record, TableauScores.Meilleur);
+        menuPresent = FindAnyObjectByType<MenuFlipper>() != null;
+        if (menuPresent)
+        {
+            EnMenu = true;
+            Cacher(true);
+        }
     }
 
     void FixedUpdate()
@@ -113,9 +137,44 @@ public class GameManager : MonoBehaviour
             bille.linearVelocity = bille.linearVelocity.normalized * vitesseMaxBille;
     }
 
+    // Recherche de bille (comme sur les vrais flippers) : si la bille ne bouge plus hors du lanceur
+    // et sans être retenue par un flipper levé, on la pousse un peu pour la décoincer.
+    [Header("Bille coincée")]
+    [Tooltip("Secondes sans bouger avant de pousser la bille (0 = jamais).")]
+    public float delaiBilleCoincee = 3f;
+    [Tooltip("Vitesse donnée à la bille coincée (m/s), vers le haut de la table et le centre.")]
+    public float pousseeBilleCoincee = 3f;
+    Vector3 dernierePositionBille;
+    float immobileDepuis;
+
+    void VerifierBilleCoincee()
+    {
+        if (delaiBilleCoincee <= 0f || enRemiseEnJeu || PartieTerminee || bille.isKinematic) { immobileDepuis = Time.time; return; }
+        if ((bille.position - dernierePositionBille).sqrMagnitude > 0.02f * 0.02f)
+        {
+            dernierePositionBille = bille.position;
+            immobileDepuis = Time.time;
+            return;
+        }
+        if (Time.time - immobileDepuis < delaiBilleCoincee) return;
+        immobileDepuis = Time.time;
+
+        // Au repos dans le lanceur, ou retenue sur un flipper : c'est normal
+        if (Vector3.Distance(bille.position, positionDepart) < 1.5f) return;
+        var contacts = Physics.OverlapSphere(bille.position, 0.4f, ~0, QueryTriggerInteraction.Ignore);
+        foreach (Collider c in contacts)
+            if (c.GetComponentInParent<Flipper>() != null) return;
+
+        string noms = string.Join(", ", System.Array.ConvertAll(contacts, c => c.name));
+        Debug.LogWarning($"[Bille coincée] à ({bille.position.x:F2}, {bille.position.z:F2}), contre : {noms}. Poussée pour la décoincer.", this);
+        Vector3 versCentre = new Vector3(-27.97f - bille.position.x, 0f, 0f).normalized;
+        bille.linearVelocity = (Vector3.forward * 0.8f + versCentre * 0.6f).normalized * pousseeBilleCoincee + Vector3.up * 0.5f;
+    }
+
     void Update()
     {
-        if (bille == null) return;
+        if (bille == null || EnMenu) return;
+        VerifierBilleCoincee();
 
         // Filet de sécurité : la bille est sortie de la table
         if (!enRemiseEnJeu && !PartieTerminee && !bille.isKinematic &&
@@ -123,16 +182,36 @@ public class GameManager : MonoBehaviour
              Vector3.Distance(bille.position, positionDepart) > distanceMaxTable))
             BillePerdue();
 
-        // Partie terminée : Espace / Start / bouton sud de la manette pour rejouer
-        if (PartieTerminee && AppuiRejouer())
+        // Partie terminée sans menu : Espace / Start / bouton sud de la manette pour rejouer
+        // (avec le menu, c'est l'écran de fin de partie qui propose de rejouer)
+        if (PartieTerminee && !menuPresent && AppuiRejouer())
             NouvellePartie();
+    }
+
+    /// <summary>Quitte le menu et lance une partie pour ce joueur.</summary>
+    public void LancerPartie(string nom)
+    {
+        NomJoueur = string.IsNullOrWhiteSpace(nom) ? "JOUEUR" : nom.Trim();
+        EnMenu = false;
+        NouvellePartie();
+    }
+
+    /// <summary>Revient au menu : la partie en cours est abandonnée (sans enregistrer de score).</summary>
+    public void RetourMenu()
+    {
+        StopAllCoroutines();
+        enRemiseEnJeu = false;
+        PartieTerminee = false;
+        Multiplicateur = 1;
+        EnMenu = true;
+        if (bille != null) Cacher(true);
     }
 
     // ---------------------------------------------------------------- API
 
     public void AjouterPoints(int points)
     {
-        if (PartieTerminee || enRemiseEnJeu) return;
+        if (PartieTerminee || enRemiseEnJeu || EnMenu) return;
         Score += points * Mathf.Max(1, Multiplicateur);
         if (Score > Record)
         {
@@ -143,7 +222,7 @@ public class GameManager : MonoBehaviour
 
     public void BillePerdue()
     {
-        if (enRemiseEnJeu || PartieTerminee) return;
+        if (enRemiseEnJeu || PartieTerminee || EnMenu) return;
         Sons.Jouer(this, sonBillePerdue, volumeBillePerdue, 0f);
         SurBillePerdue?.Invoke();
         StartCoroutine(RemiseEnJeu());
@@ -157,6 +236,7 @@ public class GameManager : MonoBehaviour
         BilleActuelle = 1;
         PartieTerminee = false;
         Multiplicateur = 1;
+        BillesEnPlus = 0;
         foreach (var groupe in FindObjectsByType<GroupeBonus>())
             groupe.Reinitialiser();
         SurNouvellePartie?.Invoke();
@@ -170,6 +250,9 @@ public class GameManager : MonoBehaviour
         finMessage = Time.time + duree;
     }
 
+    /// <summary>Message en cours (BOOST, BONUS...) ou null. Affiché par le HUD du menu s'il y en a un.</summary>
+    public string MessageActuel => !string.IsNullOrEmpty(message) && Time.time < finMessage ? message : null;
+
     // ---------------------------------------------------------------- interne
 
     IEnumerator RemiseEnJeu()
@@ -178,11 +261,20 @@ public class GameManager : MonoBehaviour
         Cacher(true);
         yield return new WaitForSeconds(delaiRemiseEnJeu);
 
-        if (BilleActuelle >= billesParPartie)
+        if (BillesEnPlus > 0)
+        {
+            // Bille en plus (2nd chance) : on rejoue la même bille
+            BillesEnPlus--;
+            AfficherMessage("2ND CHANCE !  BILLE EN PLUS", 2.5f);
+            PlacerBille();
+        }
+        else if (BilleActuelle >= billesParPartie)
         {
             PartieTerminee = true;
             PlayerPrefs.Save();
-            PlacerBille();          // la bille attend dans le lanceur
+            if (menuPresent) Cacher(true);   // l'écran de fin de partie prend la main
+            else PlacerBille();              // la bille attend dans le lanceur
+            SurFinDePartie?.Invoke(Score);
         }
         else
         {
@@ -230,7 +322,8 @@ public class GameManager : MonoBehaviour
 
     void OnGUI()
     {
-        if (!afficherScore) return;
+        // Avec le menu, c'est son HUD (gros score en haut de l'écran) qui affiche tout
+        if (!afficherScore || EnMenu || menuPresent) return;
 
         // Taille du texte proportionnelle à la hauteur de l'écran (pareil en 720p, 1080p, 4K...)
         int taille = Mathf.Max(12, Mathf.RoundToInt(Screen.height * tailleRelative));
@@ -238,8 +331,9 @@ public class GameManager : MonoBehaviour
             CreerStyles(taille);
 
         // Bandeau compact sur une seule ligne, en haut à gauche
-        string infos = $"SCORE <b>{Score:N0}</b>     BALLE <b>{Mathf.Min(BilleActuelle, billesParPartie)}/{billesParPartie}</b>     RECORD <b>{Record:N0}</b>";
+        string infos = (NomJoueur.Length > 0 ? $"<b>{NomJoueur}</b>     " : "") + $"SCORE <b>{Score:N0}</b>     BALLE <b>{Mathf.Min(BilleActuelle, billesParPartie)}/{billesParPartie}</b>     RECORD <b>{Record:N0}</b>";
         if (Multiplicateur > 1) infos += $"     <b>x{Multiplicateur}</b>";
+        if (BillesEnPlus > 0) infos += $"     <b>+{BillesEnPlus} BILLE</b>";
         Vector2 dim = style.CalcSize(new GUIContent(infos));
         float marge = taille * 0.5f;
         var fond = new Rect(taille * 0.5f, taille * 0.4f, dim.x + marge * 2f, dim.y + marge * 0.6f);
@@ -252,7 +346,7 @@ public class GameManager : MonoBehaviour
         if (!string.IsNullOrEmpty(message) && Time.time < finMessage)
             Ombre(new Rect(0, Screen.height * 0.14f, Screen.width, taille * 2.5f), message, styleMessage);
 
-        if (PartieTerminee)
+        if (PartieTerminee && !menuPresent)
         {
             var r = new Rect(0, Screen.height * 0.5f - taille * 3f, Screen.width, taille * 3.5f);
             Ombre(r, "GAME OVER", styleGrand);
