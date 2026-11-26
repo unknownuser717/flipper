@@ -31,6 +31,9 @@ public class BoostRail : MonoBehaviour
 
     private float dernierBonus = -10f;
 
+    /// <summary>La bille vient d'entrer dans un rail (au plus une fois par "delaiPoints").</summary>
+    public static event System.Action EntreeRail;
+
     void OnCollisionEnter(Collision collision)
     {
         if (!Bille.Est(collision.gameObject) || Time.time - dernierBonus < delaiPoints)
@@ -43,6 +46,7 @@ public class BoostRail : MonoBehaviour
             GameManager.Instance.AfficherMessage($"{message}  +{pointsEntree}");
         }
         Sons.Jouer(this, son, volume, 0.02f);
+        EntreeRail?.Invoke();
     }
 
     void OnCollisionStay(Collision collision)

@@ -42,6 +42,13 @@ public class GameManager : MonoBehaviour
     public bool PartieTerminee { get; private set; }
     // Numéro de frame où la partie a été relancée (le lanceur ignore cet appui-là)
     public int FrameRejouer { get; private set; } = -1;
+    // Multiplicateur de points (power-up de l'échelle d'étoiles). 1 = normal.
+    public int Multiplicateur { get; set; } = 1;
+
+    /// <summary>La bille vient d'être perdue (avant la remise en jeu).</summary>
+    public event System.Action SurBillePerdue;
+    /// <summary>Une nouvelle partie commence.</summary>
+    public event System.Action SurNouvellePartie;
 
     Vector3 positionDepart;
     Quaternion rotationDepart;
@@ -126,7 +133,7 @@ public class GameManager : MonoBehaviour
     public void AjouterPoints(int points)
     {
         if (PartieTerminee || enRemiseEnJeu) return;
-        Score += points;
+        Score += points * Mathf.Max(1, Multiplicateur);
         if (Score > Record)
         {
             Record = Score;
@@ -138,6 +145,7 @@ public class GameManager : MonoBehaviour
     {
         if (enRemiseEnJeu || PartieTerminee) return;
         Sons.Jouer(this, sonBillePerdue, volumeBillePerdue, 0f);
+        SurBillePerdue?.Invoke();
         StartCoroutine(RemiseEnJeu());
     }
 
@@ -148,8 +156,10 @@ public class GameManager : MonoBehaviour
         Score = 0;
         BilleActuelle = 1;
         PartieTerminee = false;
+        Multiplicateur = 1;
         foreach (var groupe in FindObjectsByType<GroupeBonus>())
             groupe.Reinitialiser();
+        SurNouvellePartie?.Invoke();
         PlacerBille();
     }
 
@@ -229,6 +239,7 @@ public class GameManager : MonoBehaviour
 
         // Bandeau compact sur une seule ligne, en haut à gauche
         string infos = $"SCORE <b>{Score:N0}</b>     BALLE <b>{Mathf.Min(BilleActuelle, billesParPartie)}/{billesParPartie}</b>     RECORD <b>{Record:N0}</b>";
+        if (Multiplicateur > 1) infos += $"     <b>x{Multiplicateur}</b>";
         Vector2 dim = style.CalcSize(new GUIContent(infos));
         float marge = taille * 0.5f;
         var fond = new Rect(taille * 0.5f, taille * 0.4f, dim.x + marge * 2f, dim.y + marge * 0.6f);

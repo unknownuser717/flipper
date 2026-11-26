@@ -8,6 +8,9 @@ using UnityEngine;
 [RequireComponent(typeof(Collider))]
 public class CibleBonus : MonoBehaviour
 {
+    /// <summary>La bille vient de passer sur une pastille de bonus.</summary>
+    public static event System.Action Touchee;
+
     [Tooltip("Points à chaque passage.")]
     public int points = 250;
 
@@ -76,6 +79,7 @@ public class CibleBonus : MonoBehaviour
 
         if (GameManager.Instance != null)
             GameManager.Instance.AjouterPoints(points);
+        Touchee?.Invoke();
         // Plus fort quand l'insert s'allume que quand il l'était déjà
         Sons.Jouer(this, son, Allumee ? volume * 0.5f : volume);
 

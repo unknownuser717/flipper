@@ -5,6 +5,9 @@ using System.Collections;
 // À mettre sur l'objet racine du bumper. Flipper > Installer l'ajoute automatiquement (avec les colliders).
 public class BumperEffect : MonoBehaviour
 {
+    /// <summary>Un bumper (ou un arbre en feu) vient de marquer des points.</summary>
+    public static event System.Action Touche;
+
     [Header("Score")]
     public int points = 100;
 
@@ -89,6 +92,7 @@ public class BumperEffect : MonoBehaviour
             if (GameManager.Instance != null)
                 GameManager.Instance.AjouterPoints(points);
             Sons.Jouer(this, son, volume);
+            Touche?.Invoke();
         }
 
         float force = Mathf.Max(0.1f, impulsion + Random.Range(-variationImpulsion, variationImpulsion));

@@ -248,8 +248,12 @@ public static partial class InstallateurFlipper
         // ---------------------------------------------------------------- 12 bis. Porte à sens unique en haut du couloir du lanceur
         ConstruirePorteLanceur(depart.transform.position, rayon, normale, hautTable, rapport, aVerifier);
 
-        // ---------------------------------------------------------------- 13. Textures des murs
+        // ---------------------------------------------------------------- 13. Textures des murs + modèles 3D des murets
         AppliquerTexturesMurs(rapport, aVerifier);
+        HabillerMurets(rapport, aVerifier);
+        HabillerLanceur(rapport, aVerifier);
+        PoserAmpoules(rapport, aVerifier);
+        ConstruireEchelle(rapport, aVerifier);
 
         // ---------------------------------------------------------------- 14. Sons
         BrancherSons(rapport);
